@@ -22,7 +22,12 @@ const PDFDocument        = require('pdfkit');
 const fs                 = require('fs');
 const path               = require('path');
 const { ChartJSNodeCanvas } = require('chartjs-node-canvas');
-const Run                = require('../models/Run');
+const { Chart: ChartJS }    = require('chart.js');
+const annotationPlugin      = require('chartjs-plugin-annotation');
+const Run                   = require('../models/Run');
+
+/* Register annotation plugin once at module level */
+ChartJS.register(annotationPlugin);
 
 /* ═══════════════════════════════════════════════════════════════
    COLOUR PALETTE
@@ -391,38 +396,363 @@ function compactTable(doc, headers, rows, colWidths, y, maxRows = 20) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   SPARKLINE CHART
+   CHART PALETTE  (mirrors PressureChart.js exactly)
 ═══════════════════════════════════════════════════════════════ */
 
-async function sparkChart({ labels, data, label, borderColor, bgColor }) {
-    const canvas = new ChartJSNodeCanvas({ width: 1060, height: 220, backgroundColour: '#FFFFFF' });
-    const cfg = {
+const CC = {
+    pre:    '#5B8DD9',
+    growth: '#D85A30',
+    post:   '#1D9E75',
+    pres:   '#2563EB',
+    grid:   '#EEEBE3',
+    bg:     '#FAFAF7',
+    text:   '#374151',
+    muted:  '#9CA3AF',
+};
+
+/* ── Mirrors buildTimeline() from PressureChart.js ── */
+function buildTimeline(preGrowth, growth, postGrowth) {
+    // Use toObject() so Mongoose subdocument fields spread correctly
+    const toPlain = s => (s && typeof s.toObject === 'function' ? s.toObject() : { ...s });
+    const allSteps = [
+        ...(preGrowth  || []).map(s => ({ ...toPlain(s), phase: 'pre'    })),
+        ...(growth     || []).map(s => ({ ...toPlain(s), phase: 'growth' })),
+        ...(postGrowth || []).map(s => ({ ...toPlain(s), phase: 'post'   })),
+    ];
+    if (!allSteps.length) return { tempPts: [], presPts: [], events: [], phaseSpans: {} };
+
+    const tempPts    = [{ x: 0, y: 25, phase: 'pre' }];
+    const presPts    = [{ x: 0, y: 0 }];
+    const events     = [];
+    const phaseSpans = { pre: null, growth: null, post: null };
+    let t = 0, prevTemp = 25;
+
+    allSteps.forEach(step => {
+        const tgt     = step.temp     ?? prevTemp;
+        const ramp    = step.rampRate ?? 0;
+        const hold    = step.hold || {};
+        const hMin    = hold.unit === 'hr'  ? (Number(hold.value) || 0) * 60
+                      : hold.unit === 'day' ? (Number(hold.value) || 0) * 1440
+                      :                       (Number(hold.value) || 0);
+        const pres    = step.pressure ?? null;
+        const rampMin = ramp > 0 ? Math.abs(tgt - prevTemp) / ramp : 0;
+        const ph      = step.phase;
+
+        const tRampEnd = t + rampMin;
+        const tHoldEnd = tRampEnd + hMin;
+
+        tempPts.push({ x: tRampEnd, y: tgt, phase: ph });
+        if (hMin > 0) tempPts.push({ x: tHoldEnd, y: tgt, phase: ph });
+
+        if (pres != null) {
+            presPts.push({ x: tRampEnd, y: pres });
+            if (hMin > 0) presPts.push({ x: tHoldEnd, y: pres });
+        }
+
+        const spanEnd = hMin > 0 ? tHoldEnd : tRampEnd;
+        if (!phaseSpans[ph]) phaseSpans[ph] = [t, spanEnd];
+        else                 phaseSpans[ph][1] = spanEnd;
+
+        events.push({ t, tRampEnd, tHoldEnd, hMin, rampMin,
+            temp: tgt, pres, ramp, hold: step.hold, remarks: step.remarks || '', phase: ph });
+
+        t        = hMin > 0 ? tHoldEnd : tRampEnd;
+        prevTemp = tgt;
+    });
+
+    tempPts.push({ x: t + 10, y: 25, phase: 'post' });
+    presPts.push({ x: t + 10, y: presPts[presPts.length - 1]?.y ?? 0 });
+
+    return { tempPts, presPts, events, phaseSpans };
+}
+
+function makeTimeUnit(xMax) {
+    if (xMax < 180)  return { unit: 'min',  divisor: 1,    label: 'Time (min)'  };
+    if (xMax < 2880) return { unit: 'hr',   divisor: 60,   label: 'Time (hr)'   };
+    return                   { unit: 'day',  divisor: 1440, label: 'Time (day)'  };
+}
+
+function fmtHold(hold) {
+    if (!hold || !hold.value) return '';
+    return `${hold.value} ${hold.unit}`;
+}
+
+/* ── Phase background boxes ── */
+function makePhaseBoxes(phaseSpans) {
+    const boxes = {};
+    const labels = { pre: 'Pre-Growth', growth: 'Growth', post: 'Post-Growth' };
+    Object.entries(phaseSpans).forEach(([ph, span]) => {
+        if (!span) return;
+        boxes[`${ph}Box`] = {
+            type: 'box',
+            xMin: span[0], xMax: span[1],
+            backgroundColor: CC[ph] + '0D',
+            borderColor:     CC[ph] + '40',
+            borderWidth: 1,
+            borderDash: [5, 4],
+            label: {
+                display: true,
+                content: labels[ph],
+                position: { x: 'center', y: 'start' },
+                color: CC[ph],
+                font: { size: 10, weight: '700' },
+                padding: { x: 6, y: 3 },
+                backgroundColor: CC[ph] + '18',
+            },
+        };
+        if (ph === 'pre' || ph === 'growth') {
+            boxes[`${ph}Div`] = {
+                type: 'line', xMin: span[1], xMax: span[1],
+                borderColor: '#CCCCCC', borderWidth: 1, borderDash: [5, 4],
+            };
+        }
+    });
+    return boxes;
+}
+
+/* ── Hold duration arrows ── */
+function makeHoldArrows(events) {
+    const out = {};
+    events.forEach((ev, i) => {
+        if (ev.hMin <= 0 || ev.temp === 25) return;
+        const yArr = ev.temp + ev.temp * 0.015;
+        out[`hold_${i}`]    = { type: 'line', xMin: ev.tRampEnd, xMax: ev.tHoldEnd,
+            yMin: yArr, yMax: yArr, borderColor: '#CCCCCC', borderWidth: 1 };
+        out[`holdLbl_${i}`] = { type: 'label',
+            xValue: (ev.tRampEnd + ev.tHoldEnd) / 2, yValue: yArr,
+            content: [`\u2190 ${fmtHold(ev.hold)} \u2192`],
+            yAdjust: -12, color: '#999',
+            font: { size: 8 },
+        };
+    });
+    return out;
+}
+
+/* ── Temperature point labels ── */
+function makeTempLabels(events) {
+    const out = {}, seen = new Set();
+    events.forEach((ev, i) => {
+        const key = `${Math.round(ev.tRampEnd)}_${ev.temp}`;
+        if (seen.has(key) || ev.temp === 25) return;
+        seen.add(key);
+        const lines = [`${ev.temp}\u00b0C`];
+        if (ev.ramp > 0) lines.push(`${ev.ramp}\u00b0C/min`);
+        out[`tLbl_${i}`] = {
+            type: 'label', xValue: ev.tRampEnd, yValue: ev.temp,
+            content: lines, yAdjust: -30,
+            color: CC[ev.phase],
+            font: { size: 8, weight: '600' },
+            backgroundColor: '#FFFFFFDD',
+            borderRadius: 4, borderWidth: 0.5, borderColor: CC[ev.phase] + '66',
+            padding: { x: 5, y: 3 },
+        };
+    });
+    return out;
+}
+
+/* ── Pressure point labels ── */
+function makePresLabels(events) {
+    const out = {}, seen = new Set();
+    events.forEach((ev, i) => {
+        if (ev.pres == null) return;
+        const key = `${Math.round(ev.tRampEnd)}_${ev.pres}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        out[`pLbl_${i}`] = {
+            type: 'label', xValue: ev.tRampEnd, yValue: ev.pres,
+            content: [`${ev.pres} torr`], yAdjust: -14,
+            color: CC.pres,
+            font: { size: 8 },
+            backgroundColor: '#EFF6FFEE',
+            borderRadius: 4, borderWidth: 0.5, borderColor: '#BFDBFE',
+            padding: { x: 4, y: 2 },
+        };
+    });
+    return out;
+}
+
+/* ── Growth start/end markers ── */
+function makeGrowthMarkers(events, phaseSpans) {
+    const out = {};
+    const gEvs = events.filter(e => e.phase === 'growth');
+    if (!gEvs.length) return out;
+    const gs = gEvs[0], ge = gEvs[gEvs.length - 1];
+    const geEnd = ge.hMin > 0 ? ge.tHoldEnd : ge.tRampEnd;
+    out.gStart = {
+        type: 'label', xValue: gs.tRampEnd, yValue: gs.temp,
+        content: ['Growth started'], yAdjust: 22, color: CC.growth,
+        font: { size: 8, weight: '700' },
+        backgroundColor: '#FDECEA99', borderRadius: 4,
+        borderColor: CC.growth + '44', borderWidth: 1, padding: { x: 5, y: 3 },
+    };
+    out.gEnd = {
+        type: 'label', xValue: geEnd, yValue: ge.temp,
+        content: ['Growth terminated'], yAdjust: 22, color: CC.growth,
+        font: { size: 8, weight: '700' },
+        backgroundColor: '#FDECEA99', borderRadius: 4,
+        borderColor: CC.growth + '44', borderWidth: 1, padding: { x: 5, y: 3 },
+    };
+    const gSpan = phaseSpans.growth;
+    if (gSpan) {
+        const midT  = (gSpan[0] + gSpan[1]) / 2;
+        const ySpan = gs.temp - gs.temp * 0.08;
+        out.gSpanLine = {
+            type: 'line', xMin: gSpan[0], xMax: gSpan[1],
+            yMin: ySpan, yMax: ySpan,
+            borderColor: '#AAAAAA', borderWidth: 1,
+        };
+        out.gSpanLbl = {
+            type: 'label', xValue: midT, yValue: ySpan,
+            content: [`\u2190 ${fmtHold(gs.hold)} \u2192`],
+            yAdjust: -12, color: '#666',
+            font: { size: 9, weight: '600' },
+        };
+    }
+    return out;
+}
+
+/* ── Render TEMPERATURE chart to buffer (mirrors frontend top subplot) ── */
+async function renderTempChart(preGrowth, growth, postGrowth) {
+    const { tempPts, events, phaseSpans } = buildTimeline(preGrowth, growth, postGrowth);
+    // Always has at least the origin point; bail only if no real steps were added
+    const hasRealData = tempPts.some(p => p.y !== 25);
+    if (!hasRealData) return null;
+
+    const xMax     = Math.max(...tempPts.map(p => p.x)) * 1.03;
+    const timeUnit = makeTimeUnit(xMax);
+    const annotations = {
+        ...makePhaseBoxes(phaseSpans),
+        ...makeHoldArrows(events),
+        ...makeTempLabels(events),
+        ...makeGrowthMarkers(events, phaseSpans),
+    };
+
+    // Build one dataset per phase so each gets its own color
+    // (segment callbacks are not supported in chartjs-node-canvas)
+    const phases = ['pre', 'growth', 'post'];
+    const datasets = phases.map(ph => {
+        // Include one overlap point at phase boundaries so lines connect
+        const pts = [];
+        let prevPoint = null;
+        tempPts.forEach((p, i) => {
+            if (p.phase === ph) {
+                if (pts.length === 0 && prevPoint) pts.push({ x: prevPoint.x, y: prevPoint.y });
+                pts.push({ x: p.x, y: p.y });
+            }
+            prevPoint = p;
+        });
+        return {
+            label: ph,
+            data: pts,
+            borderColor: CC[ph],
+            borderWidth: 2.8,
+            tension: 0,
+            fill: false,
+            pointRadius: pts.map(p => p.y === 25 ? 2 : 4),
+            pointBackgroundColor: pts.map(p => p.y === 25 ? CC[ph] + '55' : CC[ph]),
+            pointBorderColor: '#FFFFFF',
+            pointBorderWidth: 1.5,
+        };
+    });
+
+    const canvas = new ChartJSNodeCanvas({ width: 1060, height: 380, backgroundColour: CC.bg });
+
+    return canvas.renderToBuffer({
+        type: 'line',
+        data: { datasets },
+        options: {
+            responsive: false, animation: false,
+            layout: { padding: { right: 24, left: 4, top: 50, bottom: 4 } },
+            plugins: {
+                legend: { display: false },
+                annotation: { annotations },
+            },
+            scales: {
+                x: {
+                    type: 'linear', min: 0, max: xMax,
+                    title: { display: false },
+                    grid: { color: CC.grid, lineWidth: 0.8 },
+                    ticks: { display: false },
+                },
+                y: {
+                    min: 0,
+                    title: {
+                        display: true, text: 'Temperature (\u00b0C)',
+                        color: CC.muted, font: { size: 11, weight: '600' },
+                    },
+                    ticks: {
+                        color: CC.muted, font: { size: 9 },
+                        callback: v => v + '\u00b0C', maxTicksLimit: 7,
+                    },
+                    grid: { color: CC.grid, lineWidth: 0.8 },
+                },
+            },
+        },
+    });
+}
+
+/* ── Render PRESSURE chart to buffer (mirrors frontend bottom subplot) ── */
+async function renderPresChart(preGrowth, growth, postGrowth) {
+    const { presPts, events, phaseSpans } = buildTimeline(preGrowth, growth, postGrowth);
+    const hasRealPres = presPts.some(p => p.y !== 0);
+    if (!hasRealPres) return null;
+
+    const xMax     = Math.max(...presPts.map(p => p.x)) * 1.03;
+    const timeUnit = makeTimeUnit(xMax);
+    const annotations = {
+        ...makePhaseBoxes(phaseSpans),
+        ...makePresLabels(events),
+    };
+
+    const canvas = new ChartJSNodeCanvas({ width: 1060, height: 210, backgroundColour: CC.bg });
+
+    return canvas.renderToBuffer({
         type: 'line',
         data: {
-            labels,
             datasets: [{
-                label, 
-                data: data.map(v => Number(v) || 0), // Casts string numbers to true Numbers
-                borderColor,
-                backgroundColor: bgColor,
-                borderWidth: 2.5, tension: 0.35,
-                fill: true, pointRadius: 3,
-            }]
+                label: 'Pressure',
+                data: presPts.map(p => ({ x: p.x, y: p.y })),
+                borderColor: CC.pres,
+                backgroundColor: CC.pres + '15',
+                borderWidth: 2.8,
+                stepped: 'before',
+                fill: true,
+                tension: 0,
+                pointRadius: 3.5,
+                pointBackgroundColor: '#FFFFFF',
+                pointBorderColor: CC.pres,
+                pointBorderWidth: 1.5,
+            }],
         },
         options: {
             responsive: false, animation: false,
+            layout: { padding: { right: 24, left: 4, top: 10, bottom: 4 } },
             plugins: {
-                legend: { display: true, position: 'top', labels: { font: { size: 11 } } }
+                legend: { display: false },
+                annotation: { annotations },
             },
             scales: {
-                x: { title: { display: true, text: 'Time (min)', font: { size: 10 } }, ticks: { font: { size: 9 } } },
-                y: { title: { display: true, text: label,        font: { size: 10 } }, ticks: { font: { size: 9 } } },
-            }
-        }
-    };
-    
-    // Renders output directly to a Buffer in memory
-    return await canvas.renderToBuffer(cfg);
+                x: {
+                    type: 'linear', min: 0, max: xMax,
+                    title: {
+                        display: true, text: timeUnit.label,
+                        color: CC.muted, font: { size: 11, weight: '600' },
+                    },
+                    grid: { color: CC.grid, lineWidth: 0.8 },
+                    ticks: { color: CC.muted, font: { size: 9 }, maxTicksLimit: 12 },
+                },
+                y: {
+                    min: 0,
+                    title: {
+                        display: true, text: 'Pressure (torr)',
+                        color: CC.pres, font: { size: 11, weight: '600' },
+                    },
+                    ticks: { color: CC.pres, font: { size: 9 }, maxTicksLimit: 7 },
+                    grid: { color: CC.grid, lineWidth: 0.8 },
+                },
+            },
+        },
+    });
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -488,25 +818,34 @@ router.get('/:id', async (req, res) => {
                                 : 'medium';
         const globalPhotoSize = PHOTO_SIZES[globalSizeKey];
 
-        /* ── Pre-render charts ── */
-        const tempLogs     = run.temperatureLogs || [];
-        const pressureLogs = run.pressureLogs    || [];
+        /* ── Pre-render charts — exact replica of PressureChart.js ── */
+        const pg = run.preGrowth  || [];
+        const gr = run.growth     || [];
+        const po = run.postGrowth || [];
 
-        // Now generates buffers directly without saving files
-        const [tempChartBuf, pressureChartBuf] = await Promise.all([
-            sparkChart({
-                labels: tempLogs.map(t => t.time),
-                data:   tempLogs.map(t => t.value),
-                label:  'Temperature (°C)',
-                borderColor: '#C8922A', bgColor: 'rgba(200,146,42,0.13)'
-            }),
-            sparkChart({
-                labels: pressureLogs.map(p => p.time),
-                data:   pressureLogs.map(p => p.value),
-                label:  'Pressure (bar)',
-                borderColor: '#1A6B45', bgColor: 'rgba(26,107,69,0.13)'
-            }),
+
+        // Derive flat log aliases for the summary tables
+        const { tempPts, presPts } = buildTimeline(pg, gr, po);
+        const tempLogs     = tempPts.map(p => ({ time: Math.round(p.x), value: p.y }));
+        const pressureLogs = presPts.map(p => ({ time: Math.round(p.x), value: p.y }));
+
+        const [tempChartResult, pressureChartResult] = await Promise.allSettled([
+            renderTempChart(pg, gr, po),
+            renderPresChart(pg, gr, po),
         ]);
+
+        const tempChartBuf     = tempChartResult.status     === 'fulfilled' ? tempChartResult.value     : null;
+        const pressureChartBuf = pressureChartResult.status === 'fulfilled' ? pressureChartResult.value : null;
+
+        if (tempChartResult.status === 'rejected')
+            console.error('[reportRoutes] Temperature chart ERROR:', tempChartResult.reason);
+        else if (!tempChartBuf)
+            console.warn('[reportRoutes] Temperature chart: no real data (all steps at 25°C or empty)');
+
+        if (pressureChartResult.status === 'rejected')
+            console.error('[reportRoutes] Pressure chart ERROR:', pressureChartResult.reason);
+        else if (!pressureChartBuf)
+            console.warn('[reportRoutes] Pressure chart: no pressure values found in phase steps');
 
         /* ── Estimate total pages (rough) ── */
         const imgCount    = (run.images || []).length;
@@ -591,14 +930,22 @@ router.get('/:id', async (req, res) => {
         );
         y += 8;
 
-        /* Temperature Chart */
-        y = guard(doc, run, y, 130, pc, totalPages);
-        y = sectionLabel(doc, '3.  Temperature Trend Chart', y);
-        y += 5;
-        const chartH = 115;
-        // Inject memory buffer instead of file path
-        doc.image(tempChartBuf, ML, y, { width: CW, height: chartH });
-        y += chartH + 6;
+        /* Temperature Chart — taller to match frontend subplot proportions */
+        const tempChartH = 160;   // matches renderTempChart 380px canvas height
+        if (tempChartBuf) {
+            y = guard(doc, run, y, tempChartH + 30, pc, totalPages);
+            y = sectionLabel(doc, '3.  Temperature Trend Chart', y);
+            y += 5;
+            doc.image(tempChartBuf, ML, y, { width: CW, height: tempChartH });
+            y += tempChartH + 6;
+        } else {
+            y = guard(doc, run, y, 40, pc, totalPages);
+            y = sectionLabel(doc, '3.  Temperature Trend Chart', y);
+            y += 8;
+            doc.font('Helvetica').fontSize(8).fillColor(C.muted)
+                .text('No temperature data available to render chart.', ML + 8, y);
+            y += 20;
+        }
 
         /* ════════════════════════════════════════════
            PAGE 3 — PRESSURE LOGS + NOTES
@@ -622,13 +969,22 @@ router.get('/:id', async (req, res) => {
         );
         y += 8;
 
-        /* Pressure Chart */
-        y = guard(doc, run, y, 130, pc, totalPages);
-        y = sectionLabel(doc, '5.  Pressure Trend Chart', y);
-        y += 5;
-        // Inject memory buffer instead of file path
-        doc.image(pressureChartBuf, ML, y, { width: CW, height: chartH });
-        y += chartH + 10;
+        /* Pressure Chart — shorter to match frontend subplot proportions */
+        const presChartH = 88;    // matches renderPresChart 210px canvas height
+        if (pressureChartBuf) {
+            y = guard(doc, run, y, presChartH + 30, pc, totalPages);
+            y = sectionLabel(doc, '5.  Pressure Trend Chart', y);
+            y += 5;
+            doc.image(pressureChartBuf, ML, y, { width: CW, height: presChartH });
+            y += presChartH + 10;
+        } else {
+            y = guard(doc, run, y, 40, pc, totalPages);
+            y = sectionLabel(doc, '5.  Pressure Trend Chart', y);
+            y += 8;
+            doc.font('Helvetica').fontSize(8).fillColor(C.muted)
+                .text('No pressure data available to render chart.', ML + 8, y);
+            y += 20;
+        }
 
         /* Operator Notes */
         if (run.notes && run.notes.trim()) {
