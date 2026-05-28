@@ -77,9 +77,10 @@ const CW = PW - ML - MR;   // usable content width
 ═══════════════════════════════════════════════════════════════ */
 
 const PHOTO_SIZES = {
-    small:  { h: 90,  cols: 3 },
-    medium: { h: 150, cols: 2 },
-    large:  { h: 220, cols: 1 },
+    small:   { h: 80,  cols: 3, label: 'Small (3 per row)'    },
+    medium:  { h: 150, cols: 2, label: 'Medium (2 per row)'   },
+    large:   { h: 220, cols: 1, label: 'Large (full width)'   },
+    xlarge:  { h: 300, cols: 1, label: 'X-Large (full width)' },
 };
 
 /* ═══════════════════════════════════════════════════════════════
@@ -108,41 +109,7 @@ function vLine(doc, x, y1, y2, color = C.mid, lw = 0.3) {
         .restore();
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   DRDO EMBLEM  (text-drawn — replace with actual logo image path
-   by setting DRDO_LOGO_PATH env variable)
-═══════════════════════════════════════════════════════════════ */
 
-const DRDO_LOGO_PATH = process.env.DRDO_LOGO_PATH || null;
-
-function drawEmblem(doc, x, y, size = 52) {
-    if (DRDO_LOGO_PATH && fs.existsSync(DRDO_LOGO_PATH)) {
-        doc.image(DRDO_LOGO_PATH, x, y, { width: size, height: size });
-        return;
-    }
-    // Fallback: geometric placeholder for DRDO wheel / chakra
-    const cx = x + size / 2;
-    const cy = y + size / 2;
-    const r  = size / 2 - 2;
-    doc.save()
-        .circle(cx, cy, r)
-        .lineWidth(1.5).strokeColor(C.gold).stroke();
-    // spokes
-    for (let i = 0; i < 8; i++) {
-        const ang = (i * Math.PI) / 4;
-        doc.moveTo(cx, cy)
-            .lineTo(cx + r * Math.cos(ang), cy + r * Math.sin(ang))
-            .lineWidth(0.8).strokeColor(C.gold).stroke();
-    }
-    doc.save()
-        .circle(cx, cy, r * 0.35)
-        .lineWidth(1).strokeColor(C.gold).stroke()
-        .restore();
-    // DRDO letters in centre
-    doc.font('Helvetica-Bold').fontSize(6).fillColor(C.gold)
-        .text('DRDO', cx - 10, cy - 3.5, { lineBreak: false, width: 20, align: 'center' });
-    doc.restore();
-}
 
 /* ═══════════════════════════════════════════════════════════════
    COVER PAGE
@@ -150,98 +117,153 @@ function drawEmblem(doc, x, y, size = 52) {
 
 function drawCoverPage(doc, run, photoSizeLabel) {
 
-    /* ── Top decorative band ── */
-    fillRect(doc, 0, 0, PW, 8, C.gold);
-    fillRect(doc, 0, 8, PW, 120, C.navy);
-    fillRect(doc, 0, 128, PW, 4, C.gold);
+    /* ── Institutional header band ── */
+    fillRect(doc, 0, 0, PW, 6, C.gold);
+    fillRect(doc, 0, 6, PW, 110, C.navy);
+    fillRect(doc, 0, 116, PW, 3, C.gold);
 
-    /* ── Emblem left ── */
-    drawEmblem(doc, ML, 16, 88);
 
-    /* ── Organisation text ── */
-    doc.font('Helvetica-Bold').fontSize(11).fillColor(C.gold)
-        .text('DEFENCE RESEARCH AND DEVELOPMENT ORGANISATION', ML + 100, 22, {
-            width: CW - 100, align: 'center', lineBreak: false
-        });
-
-    doc.font('Helvetica-Bold').fontSize(14).fillColor(C.white)
-        .text('SOLID STATE PHYSICS LABORATORY  (SSPL)', ML + 100, 40, {
-            width: CW - 100, align: 'center'
-        });
-
-    doc.font('Helvetica').fontSize(9.5).fillColor('#A8C4E8')
-        .text('Lucknow Road, Timarpur, Delhi – 110 054', ML + 100, 68, {
-            width: CW - 100, align: 'center'
-        });
-
+    const hcx = ML + 90;
+    const hcw = CW - 180;
     doc.font('Helvetica-Bold').fontSize(10).fillColor(C.gold)
-        .text('SIC LAB  ·  INDUSTRIAL FURNACE MONITORING SYSTEM', ML + 100, 84, {
-            width: CW - 100, align: 'center'
-        });
+        .text('DEFENCE RESEARCH AND DEVELOPMENT ORGANISATION', hcx, 18, { width: hcw, align: 'center' });
+    doc.font('Helvetica-Bold').fontSize(13).fillColor(C.white)
+        .text('SOLID STATE PHYSICS LABORATORY (SSPL)', hcx, 34, { width: hcw, align: 'center' });
+    doc.font('Helvetica').fontSize(8.5).fillColor('#A8C4E8')
+        .text('Lucknow Road, Timarpur, Delhi – 110 054', hcx, 56, { width: hcw, align: 'center' });
+    doc.font('Helvetica').fontSize(8).fillColor(C.gold)
+        .text('SIC Lab  ·  Industrial Furnace Monitoring System', hcx, 70, { width: hcw, align: 'center' });
 
-    /* ── Emblem right (mirror) ── */
-    drawEmblem(doc, PW - MR - 88, 16, 88);
+    // Thin divider below header
+    fillRect(doc, ML, 126, CW, 0.5, C.mid);
 
-    /* ── Report title block ── */
-    const titleY = 148;
-    fillRect(doc, ML, titleY, CW, 76, C.light);
-    strokeRect(doc, ML, titleY, CW, 76, C.navy, 1);
+    /* ── Document classification badge ── */
+    const classY = 132;
+    const classW = 120;
+    fillRect(doc, (PW - classW) / 2, classY, classW, 16, C.danger);
+    doc.font('Helvetica-Bold').fontSize(8).fillColor(C.white)
+        .text('CONFIDENTIAL', (PW - classW) / 2, classY + 4, { width: classW, align: 'center' });
 
-    doc.font('Helvetica-Bold').fontSize(18).fillColor(C.navy)
-        .text('INDUSTRIAL RUN REPORT', ML, titleY + 14, {
-            width: CW, align: 'center'
-        });
+    /* ── Report type label ── */
+    doc.font('Helvetica').fontSize(9).fillColor(C.muted)
+        .text('LABORATORY RUN REPORT', ML, 158, { width: CW, align: 'center' });
 
+    /* ── Main report title ── */
     const typeLabel = run.materialType === 'carbide'
         ? 'Carbide Baking Process'
         : 'Source Powder Baking Process';
+    doc.font('Helvetica-Bold').fontSize(22).fillColor(C.navy)
+        .text(typeLabel, ML, 175, { width: CW, align: 'center' });
 
-    doc.font('Helvetica').fontSize(11).fillColor(C.navyLt)
-        .text(typeLabel, ML, titleY + 40, { width: CW, align: 'center' });
+    // Title underline
+    const titleUnderY = 205;
+    fillRect(doc, (PW / 2) - 60, titleUnderY, 120, 2, C.gold);
 
-    /* ── Run identification strip ── */
-    const stripY = titleY + 76 + 12;
-    const stripH = 22;
-    fillRect(doc, ML, stripY, CW, stripH, C.navyMid);
-    doc.font('Helvetica-Bold').fontSize(9.5).fillColor(C.white)
-        .text(`Run ID :  ${run.runId}`, ML + 10, stripY + 6, { lineBreak: false });
-    doc.font('Helvetica').fontSize(9).fillColor('#A8C4E8')
-        .text(`Operator :  ${run.operatorName}`, ML + 180, stripY + 6, { lineBreak: false });
-    doc.font('Helvetica').fontSize(9).fillColor('#A8C4E8')
+    /* ── Subtitle / run description ── */
+    doc.font('Helvetica').fontSize(10).fillColor(C.navyLt)
+        .text(`Run ID: ${run.runId}  ·  ${run.operatorName}`, ML, 215, { width: CW, align: 'center' });
+
+    /* ── Horizontal divider ── */
+    hRule(doc, 234, C.mid, 0.5);
+
+    /* ── Abstract / summary box ── */
+    const absY = 242;
+    fillRect(doc, ML, absY, CW, 12, C.navyMid);
+    doc.font('Helvetica-Bold').fontSize(8).fillColor(C.white)
+        .text('ABSTRACT', ML + 8, absY + 2, { lineBreak: false });
+
+    const absTextY = absY + 16;
+    const statusStr = (run.status || 'unknown').replace('_', ' ');
+    const durStr    = run.durationMinutes ? `${run.durationMinutes} min` : 'not recorded';
+    const matStr    = run.materialType === 'carbide' ? 'carbide' : 'source powder';
+    const dateStr   = new Date(run.dateTime).toLocaleString('en-GB', {
+        day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit'
+    });
+    const absText =
+        `This report documents the industrial baking run (${run.runId}) conducted on ${dateStr} ` +
+        `at SSPL SIC Lab. The experiment processed ${matStr} ` +
+        `material over a duration of ${durStr} and was recorded with status: ${statusStr.toUpperCase()}. ` +
+        `The report includes phase-wise thermal and pressure profiles across Pre-Growth, Growth, ` +
+        `and Post-Growth stages, trend charts, and photographic documentation.`;
+
+    fillRect(doc, ML, absTextY, CW, 72, '#F9F9F6');
+    strokeRect(doc, ML, absTextY, CW, 72, C.mid, 0.4);
+    doc.font('Helvetica').fontSize(8.5).fillColor(C.black)
+        .text(absText, ML + 8, absTextY + 8, { width: CW - 16, lineBreak: true, align: 'justify' });
+
+    /* ── Key facts strip ── */
+    const factsY = absTextY + 76;
+    const facts  = [
+        { label: 'Run ID',         value: run.runId },
+        { label: 'Material',       value: matStr.charAt(0).toUpperCase() + matStr.slice(1) },
+        { label: 'Status',         value: statusStr.toUpperCase() },
+        { label: 'Duration',       value: durStr },
+        { label: 'Date',           value: new Date(run.dateTime).toLocaleDateString('en-GB') },
+        { label: 'Operator',       value: '' },
+    ];
+    const fw = CW / facts.length;
+    fillRect(doc, ML, factsY, CW, 36, C.light);
+    strokeRect(doc, ML, factsY, CW, 36, C.mid, 0.4);
+    facts.forEach((f, i) => {
+        const fx = ML + i * fw;
+        if (i > 0) vLine(doc, fx, factsY, factsY + 36, C.mid, 0.4);
+        doc.font('Helvetica').fontSize(7).fillColor(C.muted)
+            .text(f.label.toUpperCase(), fx + 5, factsY + 5, { width: fw - 10, align: 'center' });
+        doc.font('Helvetica-Bold').fontSize(8.5).fillColor(C.navy)
+            .text(String(f.value), fx + 5, factsY + 17, { width: fw - 10, align: 'center', lineBreak: false });
+    });
+
+    /* ── Table of Contents ── */
+    const tocY = factsY + 48;
+    fillRect(doc, ML, tocY, CW, 12, C.navyMid);
+    doc.font('Helvetica-Bold').fontSize(8).fillColor(C.white)
+        .text('TABLE OF CONTENTS', ML + 8, tocY + 2, { lineBreak: false });
+
+    const tocItems = [
+        { n: '1', title: 'Run Summary & Experimental Parameters' },
+        { n: '2', title: 'Pre-Growth Phase Profile' },
+        { n: '3', title: 'Growth Phase Profile' },
+        { n: '4', title: 'Post-Growth Phase Profile' },
+        { n: '5', title: 'Temperature Trend Analysis' },
+        { n: '6', title: 'Pressure Trend Analysis' },
+        { n: '7', title: 'Operator Notes & Observations' },
+        { n: '8', title: 'Photographic Documentation' },
+    ];
+    let ty = tocY + 14;
+    fillRect(doc, ML, ty, CW, tocItems.length * 14, C.white);
+    strokeRect(doc, ML, ty, CW, tocItems.length * 14, C.mid, 0.3);
+    tocItems.forEach((item, i) => {
+        const bg = i % 2 === 0 ? C.white : C.row2;
+        fillRect(doc, ML, ty, CW, 14, bg);
+        doc.font('Helvetica-Bold').fontSize(8).fillColor(C.navy)
+            .text(item.n + '.', ML + 8, ty + 3, { width: 16, lineBreak: false });
+        doc.font('Helvetica').fontSize(8).fillColor(C.black)
+            .text(item.title, ML + 26, ty + 3, { width: CW - 40, lineBreak: false });
+        const dotsX = ML + CW - 30;
+        doc.font('Helvetica').fontSize(8).fillColor(C.muted)
+            .text('· · ·', dotsX, ty + 3, { width: 26, align: 'right', lineBreak: false });
+        ty += 14;
+    });
+    hRule(doc, ty, C.navy, 0.6);
+
+    /* ── Photo size note ── */
+    const noteY = ty + 8;
+    doc.font('Helvetica').fontSize(7).fillColor(C.muted)
         .text(
-            `Date :  ${new Date(run.dateTime).toLocaleString('en-GB', {
-                day: '2-digit', month: 'short', year: 'numeric',
-                hour: '2-digit', minute: '2-digit'
-            })}`,
-            ML + 360, stripY + 6, { lineBreak: false }
+            `Photo size in this report: ${(PHOTO_SIZES[photoSizeLabel] || PHOTO_SIZES.medium).label}  ` +
+            `  ·  Adjust via query param: ?photoSize=small | medium | large | xlarge`,
+            ML, noteY, { width: CW, align: 'center' }
         );
 
-    /* ── Meta grid ── */
-    const metaY = stripY + stripH + 14;
-    const metaItems = [
-        { label: 'Run ID',           value: run.runId },
-        { label: 'Material Type',    value: run.materialType === 'carbide' ? 'Carbide' : 'Source Powder' },
-        { label: 'Status',           value: (run.status || '').replace('_', ' ').toUpperCase() },
-        { label: 'Operator',         value: run.operatorName },
-        { label: 'Duration',         value: run.durationMinutes ? `${run.durationMinutes} min` : '—' },
-        { label: 'Date & Time',      value: new Date(run.dateTime).toLocaleString('en-GB') },
-        { label: 'Temperature Logs', value: (run.temperatureLogs || []).length },
-        { label: 'Pressure Logs',    value: (run.pressureLogs    || []).length },
-        { label: 'Images',           value: (run.images          || []).length },
-        { label: 'Photo Size',       value: photoSizeLabel.charAt(0).toUpperCase() + photoSizeLabel.slice(1) },
-        { label: 'Report Generated', value: new Date().toLocaleString('en-GB') },
-        { label: 'Classification',   value: 'CONFIDENTIAL' },
-    ];
-    drawMetaGrid(doc, metaItems, metaY, 3);
-
-    /* ── Decorative bottom band ── */
-    fillRect(doc, 0, PH - 44, PW, 4, C.gold);
-    fillRect(doc, 0, PH - 40, PW, 40, C.navy);
-
-    doc.font('Helvetica').fontSize(7.5).fillColor('#A8C4E8')
+    /* ── Bottom institutional footer ── */
+    fillRect(doc, 0, PH - 42, PW, 3, C.gold);
+    fillRect(doc, 0, PH - 39, PW, 39, C.navy);
+    doc.font('Helvetica-Bold').fontSize(7.5).fillColor(C.white)
+        .text('DRDO – SSPL  ·  SIC Lab', ML, PH - 30, { width: CW, align: 'center' });
+    doc.font('Helvetica').fontSize(6.5).fillColor('#A8C4E8')
         .text(
-            'DRDO – SSPL  ·  SIC Lab  ·  This document is the property of DRDO and must not be reproduced without authorisation',
-            ML, PH - 28, { width: CW, align: 'center' }
+            'This document is the property of DRDO and must not be reproduced or distributed without written authorisation.',
+            ML, PH - 18, { width: CW, align: 'center' }
         );
 }
 
@@ -291,36 +313,31 @@ function pageHeader(doc, run, pageNum, totalPages) {
     fillRect(doc, 0, 0, PW, 5, C.gold);
     fillRect(doc, 0, 5, PW, BH - 5, C.navy);
 
-    // Left logo area
-    drawEmblem(doc, ML, 8, 30);
-
-    // Organisation line
+    // Organisation line (no emblem — starts at left margin)
     doc.font('Helvetica-Bold').fontSize(8).fillColor(C.gold)
-        .text('DRDO · SSPL · SIC Lab', ML + 36, 10, { lineBreak: false });
-
+        .text('SSPL · SIC Lab', ML, 10, { lineBreak: false });
     doc.font('Helvetica').fontSize(7).fillColor('#A8C4E8')
-        .text('Industrial Run Report', ML + 36, 22, { lineBreak: false });
+        .text('Industrial Run Report', ML, 22, { lineBreak: false });
 
     // Centre: run id + type
     const typeLabel = run.materialType === 'carbide' ? 'Carbide Baking' : 'Source Powder Baking';
     doc.font('Helvetica-Bold').fontSize(8.5).fillColor(C.white)
-        .text(`Run ID: ${run.runId}  ·  ${typeLabel}`, ML + 120, 12, {
-            width: CW - 220, align: 'center', lineBreak: false
+        .text(`Run ID: ${run.runId}  ·  ${typeLabel}`, ML + 90, 12, {
+            width: CW - 180, align: 'center', lineBreak: false
         });
 
-    // Right: page
+    // Right: page number + date
     doc.font('Helvetica').fontSize(7.5).fillColor('#A8C4E8')
         .text(`Page ${pageNum}${totalPages ? ' / ' + totalPages : ''}`, 0, 10, {
             align: 'right', width: PW - MR, lineBreak: false
         });
-
     const dateStr = new Date(run.dateTime).toLocaleString('en-GB', {
         day: '2-digit', month: 'short', year: 'numeric'
     });
     doc.font('Helvetica').fontSize(7).fillColor('#A8C4E8')
         .text(dateStr, 0, 22, { align: 'right', width: PW - MR, lineBreak: false });
 
-    return BH + 10;   // y where content begins
+    return BH + 10;
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -495,7 +512,7 @@ function makePhaseBoxes(phaseSpans) {
                 content: labels[ph],
                 position: { x: 'center', y: 'start' },
                 color: CC[ph],
-                font: { size: 10, weight: '700' },
+                font: { size: 13, weight: '700' },
                 padding: { x: 6, y: 3 },
                 backgroundColor: CC[ph] + '18',
             },
@@ -522,7 +539,7 @@ function makeHoldArrows(events) {
             xValue: (ev.tRampEnd + ev.tHoldEnd) / 2, yValue: yArr,
             content: [`\u2190 ${fmtHold(ev.hold)} \u2192`],
             yAdjust: -12, color: '#999',
-            font: { size: 8 },
+            font: { size: 11 },
         };
     });
     return out;
@@ -541,7 +558,7 @@ function makeTempLabels(events) {
             type: 'label', xValue: ev.tRampEnd, yValue: ev.temp,
             content: lines, yAdjust: -30,
             color: CC[ev.phase],
-            font: { size: 8, weight: '600' },
+            font: { size: 11, weight: '600' },
             backgroundColor: '#FFFFFFDD',
             borderRadius: 4, borderWidth: 0.5, borderColor: CC[ev.phase] + '66',
             padding: { x: 5, y: 3 },
@@ -562,7 +579,7 @@ function makePresLabels(events) {
             type: 'label', xValue: ev.tRampEnd, yValue: ev.pres,
             content: [`${ev.pres} torr`], yAdjust: -14,
             color: CC.pres,
-            font: { size: 8 },
+            font: { size: 11 },
             backgroundColor: '#EFF6FFEE',
             borderRadius: 4, borderWidth: 0.5, borderColor: '#BFDBFE',
             padding: { x: 4, y: 2 },
@@ -581,14 +598,14 @@ function makeGrowthMarkers(events, phaseSpans) {
     out.gStart = {
         type: 'label', xValue: gs.tRampEnd, yValue: gs.temp,
         content: ['Growth started'], yAdjust: 22, color: CC.growth,
-        font: { size: 8, weight: '700' },
+        font: { size: 11, weight: '700' },
         backgroundColor: '#FDECEA99', borderRadius: 4,
         borderColor: CC.growth + '44', borderWidth: 1, padding: { x: 5, y: 3 },
     };
     out.gEnd = {
         type: 'label', xValue: geEnd, yValue: ge.temp,
         content: ['Growth terminated'], yAdjust: 22, color: CC.growth,
-        font: { size: 8, weight: '700' },
+        font: { size: 11, weight: '700' },
         backgroundColor: '#FDECEA99', borderRadius: 4,
         borderColor: CC.growth + '44', borderWidth: 1, padding: { x: 5, y: 3 },
     };
@@ -605,7 +622,7 @@ function makeGrowthMarkers(events, phaseSpans) {
             type: 'label', xValue: midT, yValue: ySpan,
             content: [`\u2190 ${fmtHold(gs.hold)} \u2192`],
             yAdjust: -12, color: '#666',
-            font: { size: 9, weight: '600' },
+            font: { size: 11, weight: '600' },
         };
     }
     return out;
@@ -655,14 +672,14 @@ async function renderTempChart(preGrowth, growth, postGrowth) {
         };
     });
 
-    const canvas = new ChartJSNodeCanvas({ width: 1060, height: 380, backgroundColour: CC.bg });
+    const canvas = new ChartJSNodeCanvas({ width: 1600, height: 640, backgroundColour: CC.bg });
 
     return canvas.renderToBuffer({
         type: 'line',
         data: { datasets },
         options: {
             responsive: false, animation: false,
-            layout: { padding: { right: 24, left: 4, top: 50, bottom: 4 } },
+            layout: { padding: { right: 36, left: 8, top: 70, bottom: 8 } },
             plugins: {
                 legend: { display: false },
                 annotation: { annotations },
@@ -671,20 +688,20 @@ async function renderTempChart(preGrowth, growth, postGrowth) {
                 x: {
                     type: 'linear', min: 0, max: xMax,
                     title: { display: false },
-                    grid: { color: CC.grid, lineWidth: 0.8 },
+                    grid: { color: CC.grid, lineWidth: 1 },
                     ticks: { display: false },
                 },
                 y: {
                     min: 0,
                     title: {
                         display: true, text: 'Temperature (\u00b0C)',
-                        color: CC.muted, font: { size: 11, weight: '600' },
+                        color: CC.muted, font: { size: 14, weight: '600' },
                     },
                     ticks: {
-                        color: CC.muted, font: { size: 9 },
-                        callback: v => v + '\u00b0C', maxTicksLimit: 7,
+                        color: CC.muted, font: { size: 12 },
+                        callback: v => v + '\u00b0C', maxTicksLimit: 8,
                     },
-                    grid: { color: CC.grid, lineWidth: 0.8 },
+                    grid: { color: CC.grid, lineWidth: 1 },
                 },
             },
         },
@@ -704,7 +721,7 @@ async function renderPresChart(preGrowth, growth, postGrowth) {
         ...makePresLabels(events),
     };
 
-    const canvas = new ChartJSNodeCanvas({ width: 1060, height: 210, backgroundColour: CC.bg });
+    const canvas = new ChartJSNodeCanvas({ width: 1600, height: 360, backgroundColour: CC.bg });
 
     return canvas.renderToBuffer({
         type: 'line',
@@ -726,7 +743,7 @@ async function renderPresChart(preGrowth, growth, postGrowth) {
         },
         options: {
             responsive: false, animation: false,
-            layout: { padding: { right: 24, left: 4, top: 10, bottom: 4 } },
+            layout: { padding: { right: 36, left: 8, top: 16, bottom: 8 } },
             plugins: {
                 legend: { display: false },
                 annotation: { annotations },
@@ -736,19 +753,19 @@ async function renderPresChart(preGrowth, growth, postGrowth) {
                     type: 'linear', min: 0, max: xMax,
                     title: {
                         display: true, text: timeUnit.label,
-                        color: CC.muted, font: { size: 11, weight: '600' },
+                        color: CC.muted, font: { size: 14, weight: '600' },
                     },
-                    grid: { color: CC.grid, lineWidth: 0.8 },
-                    ticks: { color: CC.muted, font: { size: 9 }, maxTicksLimit: 12 },
+                    grid: { color: CC.grid, lineWidth: 1 },
+                    ticks: { color: CC.muted, font: { size: 12 }, maxTicksLimit: 12 },
                 },
                 y: {
                     min: 0,
                     title: {
                         display: true, text: 'Pressure (torr)',
-                        color: CC.pres, font: { size: 11, weight: '600' },
+                        color: CC.pres, font: { size: 14, weight: '600' },
                     },
-                    ticks: { color: CC.pres, font: { size: 9 }, maxTicksLimit: 7 },
-                    grid: { color: CC.grid, lineWidth: 0.8 },
+                    ticks: { color: CC.pres, font: { size: 12 }, maxTicksLimit: 7 },
+                    grid: { color: CC.grid, lineWidth: 1 },
                 },
             },
         },
@@ -770,13 +787,7 @@ function statusColor(status) {
 ═══════════════════════════════════════════════════════════════ */
 
 function pageFooter(doc, run) {
-    const fy = PH - MB;
-    hRule(doc, fy, C.gold, 0.5);
-    doc.font('Helvetica').fontSize(6.5).fillColor(C.muted)
-        .text(
-            `Operator: ${run.operatorName}  ·  Generated: ${new Date().toLocaleString('en-GB')}  ·  DRDO – SSPL  ·  SIC Lab  ·  CONFIDENTIAL`,
-            ML, fy + 4, { width: CW, align: 'center' }
-        );
+    // Footer removed per user request
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -881,213 +892,291 @@ router.get('/:id', async (req, res) => {
         const pc = { n: 1 };   // page counter object (mutable)
 
         /* ════════════════════════════════════════════
-           PAGE 2 — RUN SUMMARY + TEMPERATURE
+           PAGE 2 — SECTION 1: RUN SUMMARY & EXPERIMENTAL PARAMETERS
         ════════════════════════════════════════════ */
 
         let y = newPage(doc, run, pc, totalPages);
 
-        /* Status strip */
+        /* ── Status banner ── */
         const sc = statusColor(run.status);
-        fillRect(doc, ML, y, CW, 20, sc + '22');
-        fillRect(doc, ML, y, 5, 20, sc);
-        doc.font('Helvetica-Bold').fontSize(8.5).fillColor(sc)
-            .text(
-                `STATUS :  ${(run.status || '').toUpperCase().replace('_', ' ')}`,
-                ML + 12, y + 6, { lineBreak: false }
-            );
-        y += 20 + 10;
+        fillRect(doc, ML, y, CW, 22, sc + '18');
+        fillRect(doc, ML, y, 4, 22, sc);
+        doc.font('Helvetica-Bold').fontSize(9).fillColor(sc)
+            .text(`RUN STATUS:  ${(run.status || '').toUpperCase().replace('_', ' ')}`, ML + 12, y + 7, { lineBreak: false });
+        const generatedStr = `Report generated: ${new Date().toLocaleString('en-GB')}`;
+        doc.font('Helvetica').fontSize(7.5).fillColor(C.muted)
+            .text(generatedStr, ML, y + 8, { width: CW - 10, align: 'right', lineBreak: false });
+        y += 30;
 
-        /* Run Summary */
-        y = sectionLabel(doc, '1.  Run Summary', y);
+        /* ── Section 1: Experimental Parameters ── */
+        y = sectionLabel(doc, '1.  Run Summary & Experimental Parameters', y);
         y = kvGrid(doc, [
-            { label: 'Run ID',           value: run.runId },
-            { label: 'Operator Name',    value: run.operatorName },
-            { label: 'Material Type',    value: run.materialType },
-            { label: 'Status',           value: (run.status || '').replace('_', ' ') },
-            { label: 'Duration',         value: run.durationMinutes ? `${run.durationMinutes} min` : '—' },
-            { label: 'Date & Time',      value: new Date(run.dateTime).toLocaleString('en-GB') },
-            { label: 'Temp Log Entries', value: tempLogs.length },
-            { label: 'Pressure Entries', value: pressureLogs.length },
-            { label: 'Images Attached',  value: (run.images || []).length },
+            { label: 'Run ID',              value: run.runId },
+            { label: 'Operator Name',       value: '' },
+            { label: 'Material Type',       value: run.materialType === 'carbide' ? 'Carbide' : 'Source Powder' },
+            { label: 'Run Status',          value: (run.status || '').replace('_', ' ').toUpperCase() },
+            { label: 'Duration',            value: run.durationMinutes ? `${run.durationMinutes} min` : '—' },
+            { label: 'Date & Time',         value: new Date(run.dateTime).toLocaleString('en-GB') },
+            { label: 'Pre-Growth Steps',    value: (run.preGrowth  || []).length },
+            { label: 'Growth Steps',        value: (run.growth     || []).length },
+            { label: 'Post-Growth Steps',   value: (run.postGrowth || []).length },
+            { label: 'Temperature Points',  value: tempLogs.length },
+            { label: 'Pressure Points',     value: pressureLogs.length },
+            { label: 'Images Attached',     value: (run.images || []).length },
         ], y, 3);
-        y += 10;
+        y += 12;
 
-        /* Temperature Logs Table */
-        y = guard(doc, run, y, 100, pc, totalPages);
-        y = sectionLabel(doc, '2.  Temperature Logs', y);
-
-        const tRows = tempLogs.map((t, i) => [
-            i + 1,
-            `${t.time} min`,
-            `${t.value} °C`,
-            t.note || '',
-        ]);
-        y = compactTable(doc,
-            ['#', 'Time (min)', 'Temperature (°C)', 'Note'],
-            tRows,
-            [36, 120, 140, CW - 296],
-            y, 20
-        );
-        y += 8;
-
-        /* Temperature Chart — taller to match frontend subplot proportions */
-        const tempChartH = 160;   // matches renderTempChart 380px canvas height
-        if (tempChartBuf) {
-            y = guard(doc, run, y, tempChartH + 30, pc, totalPages);
-            y = sectionLabel(doc, '3.  Temperature Trend Chart', y);
-            y += 5;
-            doc.image(tempChartBuf, ML, y, { width: CW, height: tempChartH });
-            y += tempChartH + 6;
-        } else {
-            y = guard(doc, run, y, 40, pc, totalPages);
-            y = sectionLabel(doc, '3.  Temperature Trend Chart', y);
-            y += 8;
-            doc.font('Helvetica').fontSize(8).fillColor(C.muted)
-                .text('No temperature data available to render chart.', ML + 8, y);
-            y += 20;
-        }
-
-        /* ════════════════════════════════════════════
-           PAGE 3 — PRESSURE LOGS + NOTES
-        ════════════════════════════════════════════ */
-
-        y = newPage(doc, run, pc, totalPages);
-
-        /* Pressure Logs */
-        y = sectionLabel(doc, '4.  Pressure Logs', y);
-        const pRows = pressureLogs.map((p, i) => [
-            i + 1,
-            `${p.time} min`,
-            `${p.value} bar`,
-            p.note || '',
-        ]);
-        y = compactTable(doc,
-            ['#', 'Time (min)', 'Pressure (bar)', 'Note'],
-            pRows,
-            [36, 120, 140, CW - 296],
-            y, 20
-        );
-        y += 8;
-
-        /* Pressure Chart — shorter to match frontend subplot proportions */
-        const presChartH = 88;    // matches renderPresChart 210px canvas height
-        if (pressureChartBuf) {
-            y = guard(doc, run, y, presChartH + 30, pc, totalPages);
-            y = sectionLabel(doc, '5.  Pressure Trend Chart', y);
-            y += 5;
-            doc.image(pressureChartBuf, ML, y, { width: CW, height: presChartH });
-            y += presChartH + 10;
-        } else {
-            y = guard(doc, run, y, 40, pc, totalPages);
-            y = sectionLabel(doc, '5.  Pressure Trend Chart', y);
-            y += 8;
-            doc.font('Helvetica').fontSize(8).fillColor(C.muted)
-                .text('No pressure data available to render chart.', ML + 8, y);
-            y += 20;
-        }
-
-        /* Operator Notes */
-        if (run.notes && run.notes.trim()) {
+        /* ── Helper: draw one phase table ── */
+        function drawPhaseTable(title, steps, secNum) {
+            if (!steps || !steps.length) return;
             y = guard(doc, run, y, 60, pc, totalPages);
-            y = sectionLabel(doc, '6.  Operator Notes', y);
-            fillRect(doc, ML, y, CW, 1, C.light);   // spacer
-            y += 6;
-            doc.font('Helvetica').fontSize(8.5).fillColor(C.black)
-                .text(run.notes.trim(), ML + 8, y, { width: CW - 16 });
-            y = doc.y + 10;
-            hRule(doc, y, C.navy, 0.7);
+            y = sectionLabel(doc, `${secNum}.  ${title}`, y);
+            y += 4;
+
+            // Introductory italic note
+            doc.font('Helvetica-Oblique').fontSize(7.5).fillColor(C.muted)
+                .text(`Table ${secNum - 1}. ${title} — step-by-step thermal and pressure parameters.`, ML + 4, y);
+            y += 12;
+
+            const phRows = steps.map((s, i) => [
+                i + 1,
+                s.temp     != null ? `${s.temp} °C`        : '—',
+                s.rampRate != null ? `${s.rampRate} °C/min` : '—',
+                s.hold && s.hold.value != null ? `${s.hold.value} ${s.hold.unit || 'min'}` : '—',
+                s.pressure != null ? `${s.pressure} torr`  : '—',
+                s.remarks  || '—',
+            ]);
+            y = compactTable(doc,
+                ['Step', 'Temp (°C)', 'Ramp Rate', 'Hold', 'Pressure (torr)', 'Remarks'],
+                phRows,
+                [34, 70, 74, 60, 90, CW - 328],
+                y, 30
+            );
             y += 10;
         }
 
+        drawPhaseTable('Pre-Growth Phase Profile',  run.preGrowth  || [], 2);
+        drawPhaseTable('Growth Phase Profile',      run.growth     || [], 3);
+        drawPhaseTable('Post-Growth Phase Profile', run.postGrowth || [], 4);
+
         /* ════════════════════════════════════════════
-           PHOTOS  —  user-adjustable size
+           SECTION 5: TEMPERATURE TREND ANALYSIS
+        ════════════════════════════════════════════ */
+
+        y = guard(doc, run, y, 280, pc, totalPages);
+        y = sectionLabel(doc, '5.  Temperature Trend Analysis', y);
+        y += 6;
+
+        /* Introductory text — scientific style */
+        doc.font('Helvetica').fontSize(8.5).fillColor(C.black)
+            .text(
+                'The figure below presents the temperature profile recorded across all three phases of the run. ' +
+                'Each phase is colour-coded (blue: Pre-Growth, orange: Growth, green: Post-Growth). ' +
+                'Ramp rates (°C/min) and hold durations are annotated on the chart.',
+                ML + 4, y, { width: CW - 8, align: 'justify' }
+            );
+        y = doc.y + 10;
+
+        const tempChartH = 230;
+        if (tempChartBuf) {
+            y = guard(doc, run, y, tempChartH + 22, pc, totalPages);
+            // Figure border
+            strokeRect(doc, ML, y, CW, tempChartH + 2, C.mid, 0.4);
+            doc.image(tempChartBuf, ML + 1, y + 1, { width: CW - 2, height: tempChartH });
+            y += tempChartH + 6;
+            // Scientific figure caption
+            doc.font('Helvetica-Oblique').fontSize(7.5).fillColor(C.muted)
+                .text(
+                    `Figure 1. Temperature (°C) vs. Time profile for Run ${run.runId}. ` +
+                    `Segments represent Pre-Growth (blue), Growth (orange), and Post-Growth (green) phases. ` +
+                    `Annotations show set-point temperatures, ramp rates, and hold durations.`,
+                    ML + 4, y, { width: CW - 8, align: 'justify' }
+                );
+            y = doc.y + 14;
+        } else {
+            fillRect(doc, ML, y, CW, 32, C.row2);
+            strokeRect(doc, ML, y, CW, 32, C.mid, 0.3);
+            doc.font('Helvetica').fontSize(8).fillColor(C.muted)
+                .text('No temperature profile available — phase steps contain no temperature data.', ML + 8, y + 11, { width: CW - 16, align: 'center' });
+            y += 40;
+        }
+
+        // Condensed data table of key points
+        if (tempLogs.length > 0) {
+            y = guard(doc, run, y, 60, pc, totalPages);
+            doc.font('Helvetica').fontSize(7.5).fillColor(C.muted)
+                .text('Table 4. Key temperature data points derived from phase step profiles.', ML + 4, y);
+            y += 10;
+            const tRows = tempLogs.map((t, i) => [i + 1, `${t.time} min`, `${t.value} °C`]);
+            y = compactTable(doc,
+                ['#', 'Time (min)', 'Temperature (°C)'],
+                tRows, [36, 120, CW - 156], y, 15
+            );
+            y += 8;
+        }
+
+        /* ════════════════════════════════════════════
+           SECTION 6: PRESSURE TREND ANALYSIS
+        ════════════════════════════════════════════ */
+
+        y = guard(doc, run, y, 220, pc, totalPages);
+        y = sectionLabel(doc, '6.  Pressure Trend Analysis', y);
+        y += 6;
+
+        doc.font('Helvetica').fontSize(8.5).fillColor(C.black)
+            .text(
+                'The figure below shows the chamber pressure profile (torr) as a stepped function ' +
+                'across the run timeline. Pressure set-points are held constant within each step. ' +
+                'Phase boundaries are indicated by shaded background regions.',
+                ML + 4, y, { width: CW - 8, align: 'justify' }
+            );
+        y = doc.y + 10;
+
+        const presChartH = 160;
+        if (pressureChartBuf) {
+            y = guard(doc, run, y, presChartH + 22, pc, totalPages);
+            strokeRect(doc, ML, y, CW, presChartH + 2, C.mid, 0.4);
+            doc.image(pressureChartBuf, ML + 1, y + 1, { width: CW - 2, height: presChartH });
+            y += presChartH + 6;
+            doc.font('Helvetica-Oblique').fontSize(7.5).fillColor(C.muted)
+                .text(
+                    `Figure 2. Chamber pressure (torr) vs. Time profile for Run ${run.runId}. ` +
+                    `Stepped line represents discrete pressure set-points. Phase regions are colour-coded.`,
+                    ML + 4, y, { width: CW - 8, align: 'justify' }
+                );
+            y = doc.y + 14;
+        } else {
+            fillRect(doc, ML, y, CW, 32, C.row2);
+            strokeRect(doc, ML, y, CW, 32, C.mid, 0.3);
+            doc.font('Helvetica').fontSize(8).fillColor(C.muted)
+                .text('No pressure profile available — no pressure values recorded in phase steps.', ML + 8, y + 11, { width: CW - 16, align: 'center' });
+            y += 40;
+        }
+
+        if (pressureLogs.length > 0) {
+            y = guard(doc, run, y, 60, pc, totalPages);
+            doc.font('Helvetica').fontSize(7.5).fillColor(C.muted)
+                .text('Table 5. Key pressure data points derived from phase step profiles.', ML + 4, y);
+            y += 10;
+            const pRows = pressureLogs.map((p, i) => [i + 1, `${p.time} min`, `${p.value} torr`]);
+            y = compactTable(doc,
+                ['#', 'Time (min)', 'Pressure (torr)'],
+                pRows, [36, 120, CW - 156], y, 15
+            );
+            y += 8;
+        }
+
+        /* ════════════════════════════════════════════
+           SECTION 7: OPERATOR NOTES & OBSERVATIONS
+        ════════════════════════════════════════════ */
+
+        if (run.notes && run.notes.trim()) {
+            y = guard(doc, run, y, 80, pc, totalPages);
+            y = sectionLabel(doc, '7.  Operator Notes & Observations', y);
+            y += 6;
+            doc.font('Helvetica').fontSize(8.5).fillColor(C.muted)
+                .text('The following observations were recorded by the operator during or after the run:', ML + 4, y);
+            y += 12;
+            fillRect(doc, ML, y, CW, 6, C.white);
+            fillRect(doc, ML, y, 3, 999, C.gold);   // left accent — will be clipped by text
+            doc.font('Helvetica').fontSize(9).fillColor(C.black)
+                .text(run.notes.trim(), ML + 12, y, { width: CW - 16, align: 'justify' });
+            y = doc.y + 6;
+            // Vertical gold bar (proper height now known)
+            fillRect(doc, ML, y - (doc.y - y + 6) + 6, 3, doc.y - y + 6, C.gold);
+            hRule(doc, y + 4, C.navy, 0.7);
+            y += 14;
+        }
+
+        /* ════════════════════════════════════════════
+           SECTION 8: PHOTOGRAPHIC DOCUMENTATION
         ════════════════════════════════════════════ */
 
         const images = run.images || [];
 
         if (images.length > 0) {
 
-            y = guard(doc, run, y, 60, pc, totalPages);
-            y = sectionLabel(doc, `7.  Uploaded Images  (${images.length} photo${images.length !== 1 ? 's' : ''} · size: ${globalSizeKey})`, y, true);
-            y += 8;
+            y = guard(doc, run, y, 70, pc, totalPages);
+            y = sectionLabel(doc, `8.  Photographic Documentation  (${images.length} image${images.length !== 1 ? 's' : ''})`, y, true);
+            y += 6;
 
-            /* Photo size legend */
-            doc.font('Helvetica').fontSize(7).fillColor(C.muted)
+            doc.font('Helvetica').fontSize(8).fillColor(C.black)
                 .text(
-                    'Photo size can be adjusted via query parameter:  ?photoSize=small  |  medium  |  large',
-                    ML, y, { width: CW }
+                    `The following images were captured and submitted with this run record. ` +
+                    `Current display size: ${(PHOTO_SIZES[globalSizeKey] || PHOTO_SIZES.medium).label}. ` +
+                    `To change image size, append ?photoSize=small | medium | large | xlarge to the report URL.`,
+                    ML + 4, y, { width: CW - 8 }
                 );
-            y += 14;
+            y = doc.y + 10;
 
-            let col = 0;
+            let figNum    = 3;   // Figures 1 & 2 are charts above
+            let col       = 0;
             let rowStartY = y;
 
             for (let idx = 0; idx < images.length; idx++) {
-                const img       = images[idx];
-                // Per-image size override
-                const sizeKey   = ['small', 'medium', 'large'].includes(img.size)
-                                  ? img.size
-                                  : globalSizeKey;
-                const photoSize = PHOTO_SIZES[sizeKey];
-                const cols      = photoSize.cols;
-                const thumbH    = photoSize.h;
-                const gutter    = 10;
-                const thumbW    = (CW - gutter * (cols - 1)) / cols;
+                const img     = images[idx];
+                const sizeKey = Object.keys(PHOTO_SIZES).includes(img.size) ? img.size : globalSizeKey;
+                const pSize   = PHOTO_SIZES[sizeKey];
+                const cols    = pSize.cols;
+                const thumbH  = pSize.h;
+                const gutter  = 10;
+                const thumbW  = (CW - gutter * (cols - 1)) / cols;
+                const captionH = 22;   // space below image for figure caption
 
-                // If col count changed mid-layout (per-image size differs), reset columns
-                if (col >= cols) {
-                    col = 0;
-                    y  = rowStartY + thumbH + 22;
-                    rowStartY = y;
-                }
+                if (col >= cols) { col = 0; rowStartY += thumbH + captionH + 8; y = rowStartY; }
 
-                /* Overflow check */
                 if (col === 0) {
-                    y = guard(doc, run, rowStartY, thumbH + 30, pc, totalPages);
-                    if (pc.n > 1 && y < 60) {   // freshly added page
-                        y = sectionLabel(doc, `7.  Images (continued)`, y, true);
-                        y += 8;
+                    y = guard(doc, run, rowStartY, thumbH + captionH + 10, pc, totalPages);
+                    if (y < rowStartY - 5) {
+                        // new page was added — re-draw section label continuation
+                        y = sectionLabel(doc, '8.  Photographic Documentation (continued)', y, true);
+                        y += 6;
                     }
                     rowStartY = y;
                 }
 
                 const x = ML + col * (thumbW + gutter);
 
-                /* Image frame */
-                fillRect(doc, x, rowStartY, thumbW, thumbH, '#F0EEE8');
-                strokeRect(doc, x, rowStartY, thumbW, thumbH, C.navy, 0.5);
+                /* Light-grey image frame */
+                fillRect(doc, x, rowStartY, thumbW, thumbH, '#F4F3EF');
+                strokeRect(doc, x, rowStartY, thumbW, thumbH, C.mid, 0.5);
 
+                /* Image or placeholder */
                 const imgPath = path.join(__dirname, '..', img.path);
                 if (fs.existsSync(imgPath)) {
                     doc.image(imgPath, x + 2, rowStartY + 2, {
-                        fit:   [thumbW - 4, thumbH - 4],
-                        align: 'center',
-                        valign:'center',
+                        fit:    [thumbW - 4, thumbH - 4],
+                        align:  'center',
+                        valign: 'center',
                     });
                 } else {
                     doc.font('Helvetica').fontSize(7).fillColor(C.muted)
-                        .text('Image not found', x + 4, rowStartY + thumbH / 2 - 4, {
-                            width: thumbW - 8, align: 'center', lineBreak: false
+                        .text('Image not found', x + 4, rowStartY + thumbH / 2 - 6, {
+                            width: thumbW - 8, align: 'center',
                         });
                 }
 
-                /* Caption */
-                const caption = img.caption?.trim() || `Image ${idx + 1}`;
-                doc.font('Helvetica').fontSize(6.5).fillColor(C.muted)
-                    .text(caption, x, rowStartY + thumbH + 3, {
-                        width: thumbW, align: 'center', lineBreak: false
+                /* Figure number badge */
+                fillRect(doc, x + 3, rowStartY + 3, 36, 11, C.navy + 'CC');
+                doc.font('Helvetica-Bold').fontSize(6.5).fillColor(C.white)
+                    .text(`Fig. ${figNum}`, x + 5, rowStartY + 5, { width: 32, lineBreak: false });
+
+                /* Scientific figure caption below image */
+                const caption = img.caption?.trim() || `Experimental image ${idx + 1} from Run ${run.runId}`;
+                doc.font('Helvetica-Oblique').fontSize(7).fillColor(C.muted)
+                    .text(`Figure ${figNum}. ${caption}`, x, rowStartY + thumbH + 4, {
+                        width: thumbW, align: 'center',
                     });
 
+                figNum++;
                 col++;
                 if (col >= cols) {
                     col = 0;
-                    rowStartY += thumbH + 22;
+                    rowStartY += thumbH + captionH + 8;
                     y = rowStartY;
                 }
             }
-
-            // flush last row
-            if (col !== 0) y = rowStartY + PHOTO_SIZES[globalSizeKey].h + 22;
+            if (col !== 0) y = rowStartY + PHOTO_SIZES[globalSizeKey].h + 30;
         }
 
         /* ════════════════════════════════════════════
@@ -1095,8 +1184,6 @@ router.get('/:id', async (req, res) => {
         ════════════════════════════════════════════ */
 
         pageFooter(doc, run);
-
-        // No cleanup needed anymore because we are not creating files.
         doc.end();
 
     } catch (err) {

@@ -210,12 +210,20 @@ export default function RunDetails() {
         setLoading(false);
     };
 
-    /* ── delete (BUG FIX: was navigating to '/', should go to '/logs') ── */
+    /* ── delete run + clean up uploaded image files ── */
     const deleteRun = async () => {
         setDeleting(true);
         try {
-            await axios.delete(`http://localhost:5000/api/runs/${id}`);
-            navigate('/logs'); // ✅ fixed: was navigate('/')
+            // Collect server-side file paths so the backend can remove the
+            // physical files from the uploads folder alongside the DB record.
+            const imagePaths = (run?.images || [])
+                .map(img => img.path)   // only images stored as { path: '/uploads/...' }
+                .filter(Boolean);       // drop undefined / null / url-only entries
+
+            await axios.delete(`http://localhost:5000/api/runs/${id}`, {
+                data: { imagePaths },   // axios sends this as the DELETE request body
+            });
+            navigate('/logs');
         } catch (err) {
             console.error(err);
             alert('Failed to delete run.');
@@ -512,11 +520,14 @@ export default function RunDetails() {
                             <span style={{ ...s.cardDot, background: '#BA7517' }} />
                             <h3 style={s.cardTitle}>Temperature Profile</h3>
                         </div>
-                        <RunProfileChart
-                            preGrowth={preGrowth}
-                            growth={growth}
-                            postGrowth={postGrowth}
-                        />
+                        {/* overflow:visible + padding ensures axis/tick labels are never clipped */}
+                        <div style={{ overflowX: 'auto', padding: '4px 8px 12px 8px' }}>
+                            <RunProfileChart
+                                preGrowth={preGrowth}
+                                growth={growth}
+                                postGrowth={postGrowth}
+                            />
+                        </div>
                     </div>
                 )}
 
